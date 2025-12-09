@@ -11,9 +11,11 @@ This project implements a Spark-based deep learning pipeline to classify chest X
 - Performs distributed resizing, normalization, and label extraction
 - Handles dataset reorganization into train/validation/test splits
 
-## Image Augmentation and Preprocessing
-- Normalization of pixel intensity values
-- Resizing to 64x64 uniform input size
+## Image Preprocessing
+- Convert all images to grayscale
+- Resize to 128×128
+- Normalize pixel values to [0, 1]
+- Apply only minimal augmentation for validation/test consistency
 
 ## Model Architecture
 - Block 1
