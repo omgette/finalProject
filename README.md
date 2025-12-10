@@ -3,7 +3,7 @@
 ## Background
 Pneumonia remains a major cause of illness and mortality worldwide, especially among children, elderly adults, and immunocompromised patients. Chest X-rays are the most common diagnostic tool, but interpreting them requires radiology expertise and can be time-consuming in high-volume clinical settings.
 
-This project implements a Spark-based deep learning pipeline to classify chest X-ray images as Normal, Bacterial Pneumonia, or Viral Pneumonia using a Convolutional Neural Network (CNN). By using distributed computing across a Spark cluster with one master and multiple worker nodes, the project is able to show how medical imaging workloads can be scaled efficiently on CPU-only environments.
+This project implements a Spark-based deep learning pipeline to classify chest X-ray images as Normal, Bacterial Pneumonia, or Viral Pneumonia using a Convolutional Neural Network (CNN). By using distributed computing across a Spark cluster with one master and multiple worker nodes, the project is able to show how medical imaging workloads can be scaled efficiently on CPU-only environments. Note that even though there are 3 possible classes in this dataset, we chose to do a formal classification problem with 2 classes, Normal and Pneumonia. 
 
 ## Features
 - Implemented using PySpark
@@ -11,62 +11,77 @@ This project implements a Spark-based deep learning pipeline to classify chest X
 - Performs distributed resizing, normalization, and label extraction
 - Handles dataset reorganization into train/validation/test splits
 
-## Image Augmentation and Preprocessing
-- Normalization of pixel intensity values
-- Resizing to 224×224 uniform input size
-- Data augmentation including:
-    - Random rotation (15°)
-    - Horizontal flipping
-    - Brightness & contrast adjustments
-    - Zoom up to 10%
+## Image Preprocessing
+- Convert all images to grayscale
+- Resize to 128×128
+- Normalize pixel values to [0, 1]
+- Apply only minimal augmentation for validation/test consistency
 
-## Model Training
-- Custom CNN architecture
-- Uses Conv2D -> ReLU -> MaxPooling blocks for feature extraction
-- Dense and Dropout layers for regularization
-- Softmax classification head for 3 classes
-- Training logs, accuracy curves, and loss curves generated for monitoring
+## Model Architecture
+- Block 1
+      - 1 to 16 to 32 channels
+      - Conv2d(1, 16, 3×3, stride=1, padding=1)
+      - BatchNorm2d(16) & ReLU
+      - Conv2d(16, 16, 3×3, stride=1, padding=1)
+      - BatchNorm2d(16) & ReLU
+      - Conv2d(16, 32, 3×3, stride=2, padding=1)
+- Block 2
+      - 32 to 64 to 128 channels
+      - Conv2d(32, 64, 3×3, stride=1, padding=1)
+      - BatchNorm2d(64) & ReLU
+      - Conv2d(64, 64, 3×3, stride=1, padding=1)
+      - BatchNorm2d(64) & ReLU
+      - Conv2d(64, 128, 3×3, stride=2, padding=1)
+- Block 3
+      - 128 to 256 channels
+      - Conv2d(128, 128, 3×3, stride=1, padding=1)
+      - BatchNorm2d(64) & ReLU
+      - Conv2d(128, 128, 3×3, stride=1, padding=1)
+      - BatchNorm2d(64) & ReLU
+      - Conv2d(128, 256, 3×3, stride=2, padding=1)
+- Global Pooling
+      - AdaptiveAvgPool2d((1, 1))
+- Classifier
+      - Flatten()
+      - Dropout(p=0.5)
+      - Linear(256 to 128) & ReLU
+      - Dropout(p=0.5)
+      - Linear(128 to num_classes)
 
-## Distributed Hyperparameter Tuning
-- Runs multiple experiments in parallel across Spark worker nodes
-- Parameters tuned include:
-    - Learning rate
-    - Batch size
-    - Number of filters
-    - Regularization strength
+## Training Configuration
+- Device: CPU on the Spark master VM
+- Batch size: 32
+- Optimizer: Adam (lr = 1e-3)
+- Loss: CrossEntropyLoss
+- Regularization:
+      - L2 via weight_decay=1e-4
+      - Additional manual L1 penalty on all weights
+- Epochs: Up to 10, with validation-based early stopping
+- Best checkpoint saved automatically
 
-## Machine Learning Model
-### Convolutional Neural Network (CNN)
-- Input: 224x224 grayscale X-ray images
-- 3 convolutional blocks:
-    - Filters: 32, 64, 128
-    - Kernel size: 3×3
-    - MaxPooling layers
-- Flatten -> Dense -> Dropout (0.3)
-- Softmax output layer (3 classes)
-- Optimizer: Adam (lr = 0.001; tuned with Spark)
-- Regularization: L2 = 0.001
+## Validation and Early Stopping
+- Each epoch runs:
+      - train_one_epoch on the training set
+      - evaluate on validation set
+      - Model saved when validation accuracy improves
+      - The best model occurred at Epoch 4
 
-#### Training Configuration
-- 70/15/15 train-validation-test split
-- Early stopping enabled
-- Batch size: 32 (also tuned)
-- about 20-30 training epochs
+## Final Evaluation
+To avoid VM instability, test evaluation is done in a standalone script:
+- Loads Spark manifest
+- Builds test DataLoader
+- Re-creates CNN architecture
+- Loads best checkpoint (best_pneumonia_cnn_manifest.pt)
+- Computes:
+      - Test loss
+      - Test accuracy
+      - Confusion matrix
+      - Classification report
 
 ## Dataset
 Source: Kaggle – Chest X-Ray Images for Pneumonia Detection with Deep Learning
 
 Link: https://www.kaggle.com/datasets/tolgadincer/labeled-chest-xray-images
-
-## Performace Across VMS
-
-| **Number of VMs** | **Cores Used (8 per VM)** | **Total Runtime (min)** | **Model Training + Evaluation Time (s)** |
-| ----------------- | ------------------------- | ----------------------- | ---------------------------------------- |
-| 1 VM              | 8                         |                         |                                          |
-| 2 VMs             | 16                        |                         |                                          |
-| 3 VMs             | 24                        |                         |                                          |
-| 4 VMs             | 32                        |                         |                                          |
-
 
 ## Cluster Setup
 - 1 Master Node
